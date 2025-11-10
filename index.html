@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h2>Simple Chat (with Private Messages)</h2>
+
+    <input id="name" placeholder="Your name" />
+    <button onclick="joinChat()">Join</button>
+    <br /><br />
+
+    <input id="to" placeholder="To (leave empty for public)" />
+    <input id="msg" placeholder="Type message" />
+    <button onclick="sendMsg()">Send</button>
+
+    <ul id="chat"></ul>
+
+    <script>
+      const ws = new WebSocket("ws://localhost:8080/ws");
+      const chat = document.getElementById("chat");
+
+      ws.onopen = () => console.log("✅ Connected to WebSocket");
+
+      ws.onmessage = (event) => {
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch {
+          // plain text
+          const li = document.createElement("li");
+          li.textContent = event.data;
+          chat.appendChild(li);
+          return;
+        }
+
+        if (data.type === "init") {
+          chat.innerHTML = "<li>--- Members ---</li>";
+          data.members.forEach((m) => (chat.innerHTML += `<li>${m}</li>`));
+          chat.innerHTML += "<li>--- Recent Messages ---</li>";
+          data.history.forEach((h) => {
+            const t = new Date(h.time * 1000).toLocaleTimeString();
+            chat.innerHTML += `<li>[${t}] ${h.user}: ${h.text}</li>`;
+          });
+        } else if (data.type === "member_add") {
+          const li = document.createElement("li");
+          li.textContent = `👤 ${data.name} joined`;
+          chat.appendChild(li);
+        } else if (data.type === "member_remove") {
+          const li = document.createElement("li");
+          li.textContent = `❌ ${data.name} left`;
+          chat.appendChild(li);
+        } else if (data.user && data.text) {
+          const li = document.createElement("li");
+          const t = new Date(data.time * 1000).toLocaleTimeString();
+          li.textContent = `[${t}] ${data.user}: ${data.text}`;
+          chat.appendChild(li);
+        }
+      };
+
+      function joinChat() {
+        const name = document.getElementById("name").value.trim();
+        if (!name) return alert("Enter your name first!");
+        ws.send("join:" + name);
+      }
+
+      function sendMsg() {
+        const name = document.getElementById("name").value.trim();
+        const msg = document.getElementById("msg").value.trim();
+        const to = document.getElementById("to").value.trim();
+
+        if (!name) return alert("Join the chat first!");
+        if (!msg) return;
+
+        if (to) {
+          ws.send(`dm:${name}:${to}:${msg}`);
+        } else {
+          ws.send(`msg:${name}:${msg}`);
+        }
+
+        document.getElementById("msg").value = "";
+      }
+    </script>
+  </body>
+</html>
