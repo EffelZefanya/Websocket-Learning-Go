@@ -45,7 +45,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("💬 New WebSocket connection")
 	clients[conn] = true
 
-	// On disconnect
 	defer func() {
 		name := userNames[conn]
 		if name != "" {
@@ -57,7 +56,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 	}()
 
-	// Send initial data (members + history)
 	members, _ := rdb.SMembers(ctx, "chat:members").Result()
 	rawHistory, _ := rdb.ZRange(ctx, "chat:messages", -20, -1).Result()
 
@@ -74,7 +72,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		"history": history,
 	})
 
-	// Handle messages from this connection
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
@@ -84,7 +81,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		text := string(msg)
 
-		// User joins
 		if strings.HasPrefix(text, "join:") {
 			name := strings.TrimSpace(text[5:])
 			if name == "" {
@@ -95,7 +91,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			rdb.Publish(ctx, "member_add", name)
 			conn.WriteMessage(websocket.TextMessage, []byte("Welcome "+name+"!"))
 
-			// Subscribe this user to their DM topic
 			go subscribeToDM(name, conn)
 			continue
 		}
@@ -117,14 +112,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			jsonMsg, _ := json.Marshal(msgObj)
 
-			// Save private message in Redis
 			key := fmt.Sprintf("chat:dm:%s:%s", sender, receiver)
 			rdb.ZAdd(ctx, key, redis.Z{Score: float64(msgObj.Time), Member: jsonMsg})
 
-			// Publish to receiver’s channel
 			rdb.Publish(ctx, "dm:"+receiver, jsonMsg)
 
-			// Echo to sender
 			conn.WriteMessage(websocket.TextMessage, jsonMsg)
 			continue
 		}
@@ -151,7 +143,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Background goroutine to listen to public messages
 func listenPublicMessages() {
 	pubsub := rdb.Subscribe(ctx, "messages")
 	ch := pubsub.Channel()
@@ -162,7 +153,6 @@ func listenPublicMessages() {
 	}
 }
 
-// Notify all clients when a new member joins
 func listenMemberAdd() {
 	pubsub := rdb.Subscribe(ctx, "member_add")
 	ch := pubsub.Channel()
@@ -176,7 +166,6 @@ func listenMemberAdd() {
 	}
 }
 
-// Notify all clients when a member leaves
 func listenMemberRemove() {
 	pubsub := rdb.Subscribe(ctx, "member_remove")
 	ch := pubsub.Channel()
@@ -190,7 +179,6 @@ func listenMemberRemove() {
 	}
 }
 
-// Subscribe this specific user connection to their personal DM topic
 func subscribeToDM(username string, conn *websocket.Conn) {
 	pubsub := rdb.Subscribe(ctx, "dm:"+username)
 	ch := pubsub.Channel()

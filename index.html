@@ -24,7 +24,6 @@
         try {
           data = JSON.parse(event.data);
         } catch {
-          // plain text
           const li = document.createElement("li");
           li.textContent = event.data;
           chat.appendChild(li);
